@@ -4,6 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.gzip import GZipMiddleware
 
 
 class Board(object):
@@ -92,6 +93,7 @@ class Game(object):
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 app = FastAPI()
+app.add_middleware(GZipMiddleware, minimum_size=500)
 app.mount("/pictures", StaticFiles(directory=BASE_DIR / "pictures"), name="pictures")
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
 all_pictures = [f"{x}" for x in range(278)]
