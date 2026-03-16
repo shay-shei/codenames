@@ -1,5 +1,9 @@
 import random, json, hashlib
-from flask import Flask, render_template, jsonify, request, redirect, make_response
+from pathlib import Path
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
 
 class Board(object):
@@ -86,7 +90,10 @@ class Game(object):
         self.scores[team] += 1
 
 
-app = Flask(__name__, static_url_path="/", static_folder="..")
+BASE_DIR = Path(__file__).resolve().parent.parent
+app = FastAPI()
+app.mount("/pictures", StaticFiles(directory=BASE_DIR / "pictures"), name="pictures")
+templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
 all_pictures = [f"{x}" for x in range(278)]
 game = Game()
 
@@ -97,35 +104,37 @@ def ensure_game():
         game.start()
 
 
-def need_loggin():
+def need_loggin(request: Request):
     nickname = request.cookies.get('nickname')
     return nickname is None
 
 
-@app.route('/nickname')
-def nickname():
-    return render_template("nickname.html")
+@app.get('/nickname', response_class=HTMLResponse)
+async def nickname(request: Request):
+    return templates.TemplateResponse("nickname.html", {"request": request})
 
 
-@app.route("/")
-def main():
-    if need_loggin():
-        return redirect("/nickname")
+@app.get("/", response_class=HTMLResponse)
+async def main(request: Request):
+    if need_loggin(request):
+        return RedirectResponse("/nickname")
 
     ensure_game()
     global game
-    return render_template("board.html",
-                           game=game,
-                           state=json.dumps(game.board.revealed),
-                           game_map=game.board.game_map,
-                           board_id=game.board.board_id,
-                           starting="primary" if game.board.starting_team == "blue" else "danger",
-                           nickname=request.cookies.get('nickname'),
-                           admin=is_admin(),
-                           codemaster=is_codemaster())
+    return templates.TemplateResponse("board.html", {
+        "request": request,
+        "game": game,
+        "state": json.dumps(game.board.revealed),
+        "game_map": game.board.game_map,
+        "board_id": game.board.board_id,
+        "starting": "primary" if game.board.starting_team == "blue" else "danger",
+        "nickname": request.cookies.get('nickname'),
+        "admin": is_admin(request),
+        "codemaster": is_codemaster(request),
+    })
 
 
-def calc_state():
+def calc_state(request: Request):
     ensure_game()
     global game
 
@@ -136,8 +145,8 @@ def calc_state():
             "guesses": game.board.guesses}
 
 
-@app.route('/guess/<int:cell>')
-def guess(cell):
+@app.get('/guess/{cell}')
+async def guess(cell: int):
     ensure_game()
     global game
     game.board.reveal(cell)
@@ -154,105 +163,110 @@ def guess(cell):
     return "ok"
 
 
-@app.route('/state')
-def get_state():
-    return jsonify(calc_state())
+@app.get('/state')
+async def get_state(request: Request):
+    return calc_state(request)
 
 
-@app.route('/setNickname', methods=['POST'])
-def set_nickname():
+@app.post('/setNickname')
+async def set_nickname(request: Request):
     ensure_game()
     global game
 
-    nickname = request.form.get('nickname')
+    form = await request.form()
+    nickname = form.get('nickname')
     if nickname in game.players:
-        return redirect("/nickname")
+        return RedirectResponse("/nickname", status_code=303)
 
     game.add_player(nickname)
-    resp = make_response(redirect("/"))
+    resp = RedirectResponse("/", status_code=303)
     resp.set_cookie('nickname', nickname)
     return resp
 
 
-def is_admin():
+def is_admin(request: Request):
     return request.cookies.get('admin') is not None \
             and request.cookies.get('admin') == "yes"
 
 
-def generate_admin_page(error=False, authenticated=True):
+def generate_admin_page(request: Request, error=False, authenticated=True):
     ensure_game()
     global game
 
     players = [{"name": x, "codemaster": (x in game.codemasters)} for x in game.players]
-    return render_template("admin.html",
-                           players=players,
-                           error=error,
-                           authenticated=authenticated)
+    return templates.TemplateResponse("admin.html", {
+        "request": request,
+        "players": players,
+        "error": error,
+        "authenticated": authenticated,
+    })
 
 
-@app.route('/admin')
-def admin():
-    if is_admin():
-        return generate_admin_page()
+@app.get('/admin', response_class=HTMLResponse)
+async def admin(request: Request):
+    if is_admin(request):
+        return generate_admin_page(request)
     else:
-        return generate_admin_page(authenticated=False)
+        return generate_admin_page(request, authenticated=False)
 
 
-@app.route('/adminLogin', methods=['POST'])
-def admin_login():
-    username = request.form.get("username")
-    password = request.form.get("password")
-    if (username == "admin") and (password=="$Hipod"):
-        resp = make_response(redirect("/admin"))
+@app.post('/adminLogin')
+async def admin_login(request: Request):
+    form = await request.form()
+    username = form.get("username")
+    password = form.get("password")
+    if (username == "admin") and (password == "$Hipod"):
+        resp = RedirectResponse("/admin", status_code=303)
         resp.set_cookie('admin', "yes")
         return resp
     else:
-        return redirect("/admin")
+        return RedirectResponse("/admin", status_code=303)
 
 
-@app.route('/setCodemasters', methods=['POST'])
-def set_codemasters():
-    if is_admin():
+@app.post('/setCodemasters')
+async def set_codemasters(request: Request):
+    if is_admin(request):
         global game
 
-        codemasters = request.form.getlist('codemasters')
+        form = await request.form()
+        codemasters = form.getlist('codemasters')
         if len(codemasters) > 2:
-            return generate_admin_page(error=True)
+            return generate_admin_page(request, error=True)
 
         game.set_codemasters(*codemasters)
         game.start()
-        return redirect("/")
+        return RedirectResponse("/", status_code=303)
     else:
-        return redirect("/admin")
+        return RedirectResponse("/admin", status_code=303)
 
 
-@app.route('/newgame', defaults={'won': None})
-@app.route('/newgame/<won>')
-def new_game(won):
+@app.get('/newgame')
+@app.get('/newgame/{won}')
+async def new_game(request: Request, won: str = None):
     ensure_game()
     global game
 
-    if not is_admin():
-        return redirect("/")
+    if not is_admin(request):
+        return RedirectResponse("/", status_code=303)
 
     game.start()
     if won is not None:
         game.mark_winner(won)
-    return redirect("/")
+    return RedirectResponse("/", status_code=303)
 
 
-@app.route('/resetScores')
-def reset_scores():
-    if not is_admin():
-        return redirect("/")
+@app.get('/resetScores')
+async def reset_scores(request: Request):
+    if not is_admin(request):
+        return RedirectResponse("/", status_code=303)
 
     ensure_game()
     global game
     game.reset_scores()
-    return redirect("/")
+    return RedirectResponse("/", status_code=303)
 
 
-def is_codemaster():
+def is_codemaster(request: Request):
     ensure_game()
     global game
 
