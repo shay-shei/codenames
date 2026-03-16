@@ -23,7 +23,7 @@
                     <div class="form-group">
                         <select multiple class="form-control" name="codemasters">
                             {% for player in players %}
-                            <option {% if player.codemaster %}selected{% endif %}>{{player.name}}</option>
+                            <option value="{{player.name}}" {% if player.codemaster %}selected{% endif %}>{{player.name}}</option>
                             {% endfor %}
                         </select>
                     </div>
