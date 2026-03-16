@@ -1,0 +1,184 @@
+<!doctype html>
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+    <style>
+        img.lastone {
+            border: 2px solid greenyellow;
+        }
+    </style>
+
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" />
+
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js"></script>
+
+    <script>
+        function align_images() {
+            $("img.picture").width(window.max_width);
+            $("img.picture").width(window.max_height);
+
+            $("img.team").width(window.max_width);
+            $("img.team").width(window.max_height);
+        }
+
+        function update_team(idx) {
+            cell = $("td#cell" + idx);
+            $("img#picture" + idx).attr("ondblclick", "");
+            cell.hover(function(e) { $("img#team" + idx).hide(); $("img#picture" + idx).show(); },
+                       function(e) { $("img#team" + idx).show(); $("img#picture" + idx).hide(); });
+
+            cell.on('touchstart click',
+                    function(e) { $("img#team" + idx).hide(); $("img#picture" + idx).show(); });
+            cell.on('touchend click',
+                    function(e) { $("img#team" + idx).show(); $("img#picture" + idx).hide(); });
+        }
+
+        function switch_image(idx) {
+            picture = $("img#picture" + idx);
+            team = $("img#team" + idx);
+
+            if (picture.is(':visible')) {
+                picture.hide();
+                team.show();
+            } else {
+                team.hide();
+                picture.show();
+            }
+        }
+
+        function handle_guess(idx) {
+            picture = $("img#picture" + idx)
+            team = $("img#team" + idx)
+
+            $("img.team").removeClass("lastone");
+            $("img.picture").removeClass("lastone");
+            $(team).addClass("lastone");
+            $(picture).addClass("lastone");
+
+            switch_image(idx);
+            update_team(idx);
+            align_images();
+        }
+
+        function make_guess(idx) {
+            $.get("/guess/" + idx).fail(function (xhr, status, error) {
+                error_div = $("div#server-error")
+                error_div.text(xhr.responseText);
+                error_div.show()
+            });
+        }
+
+        function handle_state(data) {
+            if (data["board_id"] != window.board_id) {
+                window.location.href="/";
+            }
+
+            // Update score and left guesses
+            $("span#red-score").text(data["scores"]["red"]);
+            $("span#blue-score").text(data["scores"]["blue"]);
+            $("span#red-guesses").text(data["guesses"]["red"]);
+            $("span#blue-guesses").text(data["guesses"]["blue"]);
+
+            for (let i = 0; i < window.state.length; ++i) {
+                if (data["state"][i] && !window.state[i]) {
+                    window.state[i] = true;
+                    handle_guess(i);
+                }
+            }
+        }
+    </script>
+</head>
+
+<body style="background-color: black;">
+    <div id="server-error" style="text-align: center; display: none;" class="alert alert-secondary m-0 p-0"></div>
+    <div style="text-align: center;" class="alert alert-{{ starting }} m-0 p-0">
+        <div style="float: right; line-height: 100%;" class="pr-1">
+            Scores: Red <span id="red-score">{{ game.scores.red }}</span>, Blue <span id="blue-score">{{ game.scores.blue }}</span>
+            <br>
+            Left Guesses:  <span id="red-guesses" style="color: red;">{{ game.board.guesses.red }}</span> | <span id="blue-guesses" style="color: blue;">{{ game.board.guesses.blue }}</span>
+        </div>
+        <div style="float: left; text-align: left; line-height: 100%;" class="pl-1">
+            <a href="/nickname" class="alert-link">Change nickname</a><br>
+            {% if admin %}
+                <div class="dropdown">
+                    <a class="alert-link dropdown-toggle" href="#" role="button" id="dropdownMenuLink" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                        Manage
+                    </a>
+                    <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                        <h6 class="dropdown-header">Manage game</h6>
+                        <a class="dropdown-item" href="/admin">Change codemasters</a>
+                        <a class="dropdown-item" href="/newgame">Start a new game</a>
+                        <div class="dropdown-divider"></div>
+                        <h6 class="dropdown-header">Manage scores</h6>
+                        <a class="dropdown-item" href="/newgame/red">Red team won</a>
+                        <a class="dropdown-item" href="/newgame/blue">Blue team won</a>
+                        <a class="dropdown-item" href="/resetScores">Reset scores</a>
+                    </div>
+                </div>
+            {% else %}
+                <a href="/admin" class="alert-link">Manage</a>
+            {% endif %}
+        </div>
+        <h2>Hi {{ nickname }}!</h2>
+    </div>
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-{% if codemaster %}ms-6{% else %}12{% endif %}">
+                <table>
+                {% for i in range(20) %}
+                    {% if (i % 5) == 0 %}
+                    <tr>
+                    {% endif %}
+                    <td id="cell{{i}}", class="cell">
+                        <div {% if codemaster %}style="position: relative; display: block;"{% endif %}>
+                            {% if codemaster %}
+                            <img class="map"
+                                 style="border: 1px solid black; width: 11%; height: 11%; position: absolute; left: 5%; top: 5%;"
+                                 src="/pictures/{{ game_map[i] }}.jpg" />
+                            {% endif %}
+                            <img id="picture{{i}}"
+                                 class="picture"
+                                 style="max-width: 100%; max-height: 22vh"
+                                 ondblclick="make_guess({{ i }});"
+                                 src="/pictures/{{ game.board.pictures[i] }}.jpg" />
+                            <img id="team{{i}}"
+                                 class="team"
+                                 style="max-width: 100%; max-height: 22vh; display: none;"
+                                 src="/pictures/{{ game.board.map[i] }}.jpg" />
+                        </div>
+                    </td>
+                    {% if ((i + 1) % 5) == 0 %}
+                    </tr>
+                    {% endif %}
+                {% endfor %}
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        window.state = {{ state }};
+        window.board_id = "{{ board_id }}";
+
+        $( document ).ready(function () {
+            setInterval(function() {
+                $.get({url: "/state", success: handle_state});
+            }, 500);
+        });
+
+        window.onload = function () {
+            for (let i = 0; i < window.state.length; ++i) {
+                if (window.state[i]) {
+                    handle_guess(i);
+                }
+            }
+            window.max_width = $("img.picture").map(function () { return $(this).width(); }).get().sort()[19];
+            window.max_height = $("img.picture").map(function () { return $(this).width(); }).get().sort()[19];
+            align_images();
+        };
+    </script>
+</body>

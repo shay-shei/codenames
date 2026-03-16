@@ -1,0 +1,16 @@
+<!doctype html>
+{% if game_map|length == 0 %}
+    <h1>Game has not been started yet!</h1>
+{% else %}
+    <table style="max-width: 100%" class="mt-4 ml-4">
+    {% for i in range(20) %}
+        {% if (i % 5) == 0 %}
+        <tr>
+        {% endif %}
+        <td><img class="map" style="border: 2px solid black; max-width: 9vw; max-height: 10vh;" src="/pictures/{{ game_map[i] }}.jpg" /></td>
+        {% if ((i + 1) % 5) == 0 %}
+        </tr>
+        {% endif %}
+    {% endfor %}
+    </table>
+{% endif %}

@@ -1,0 +1,70 @@
+<!doctype html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" />
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+</head>
+<body>
+    {% if authenticated %}
+    <form method="post" action="/setCodemasters">
+        <div class="container">
+            <div class="row">
+                <div class="col-1"></div>
+                <div class="col-10">
+                    <h3>Who should be codemaster?</h3>
+                </div>
+                <div class="col-1"></div>
+            </div>
+            <div class="row">
+                <div class="col-1"></div>
+                <div class="col-8">
+                    <div class="form-group">
+                        <select multiple class="form-control" name="codemasters">
+                            {% for player in players %}
+                            <option {% if player.codemaster %}selected{% endif %}>{{player.name}}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="col-3"></div>
+            </div>
+            <div class="row">
+                <div class="col-1">
+                </div>
+                <div class="col-8">
+                    {% if error %}
+                    <div class="alert alert-danger" role="alert">
+                    Up up two players can be codemasters
+                    </div>
+                    {% endif %}
+                    <input type="submit" value="submit" class="btn btn-primay"></input>
+                </div>
+                <div class="col-3"></div>
+            </div>
+        </div>
+    </form>
+    {% else %}
+    <form method="post" action="/adminLogin">
+        <div class="container-fluid">
+            <div class="row mt-5">
+                <div class="col-3"></div>
+                <div class="col-6">
+                    <div class="form-group">
+                        <label for="inputUsername">Username</label>
+                        <input type="text" class="form-control" id="inputUsername" name="username" aria-describedby="emailHelp" placeholder="Username">
+                    </div>
+                    <div class="form-group">
+                        <label for="inputPassword">Password</label>
+                        <input type="password" class="form-control" id="inputPassword" name="password" placeholder="Password">
+                        <small id="passwordHelp" class="form-text text-muted">Hint: who am I?</small>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Submit</button>
+                </div>
+                <div class="col-3"></div>
+            </div>
+        </div>
+    </form>
+    {% endif %}
+</body>
