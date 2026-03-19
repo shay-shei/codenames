@@ -5,6 +5,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.gzip import GZipMiddleware
+from starlette.types import ASGIApp, Receive, Send, Scope
 
 
 class Board(object):
@@ -93,7 +94,6 @@ class Game(object):
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 app = FastAPI()
-app.add_middleware(GZipMiddleware, minimum_size=500)
 app.mount(
     "/pictures",
     StaticFiles(directory=BASE_DIR / "pictures", headers={
