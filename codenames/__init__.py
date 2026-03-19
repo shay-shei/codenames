@@ -94,11 +94,18 @@ class Game(object):
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 app = FastAPI()
+
+
+class CachedStaticFiles(StaticFiles):
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
+
+
 app.mount(
     "/pictures",
-    StaticFiles(directory=BASE_DIR / "pictures", headers={
-        "Cache-Control": "public, max-age=31536000, immutable"
-    }),
+    CachedStaticFiles(directory=BASE_DIR / "pictures"),
     name="pictures"
 )
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
