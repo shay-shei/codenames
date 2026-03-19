@@ -97,6 +97,7 @@
     <div id="server-error" style="text-align: center; display: none;" class="alert alert-secondary m-0 p-0"></div>
     <div style="text-align: center;" class="alert alert-{{ starting }} m-0 p-0">
         <div style="float: right; line-height: 100%;" class="pr-1">
+            <span id="ws-status" style="font-size: 0.8em; color: orange; display: none;">Reconnecting...</span><br>
             Scores: Red <span id="red-score">{{ game.scores.red }}</span>, Blue <span id="blue-score">{{ game.scores.blue }}</span>
             <br>
             Left Guesses:  <span id="red-guesses" style="color: red;">{{ game.board.guesses.red }}</span> | <span id="blue-guesses" style="color: blue;">{{ game.board.guesses.blue }}</span>
@@ -164,11 +165,55 @@
         window.state = {{ state }};
         window.board_id = "{{ board_id }}";
 
-        $( document ).ready(function () {
-            setInterval(function() {
-                $.get({url: "/state", success: handle_state});
-            }, 500);
-        });
+        // WebSocket connection and management
+        let ws = null;
+        let reconnectTimer = null;
+        let guessQueue = [];
+
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+            ws = new WebSocket(`${protocol}://${window.location.host}/ws`);
+
+            ws.onopen = function() {
+                console.log('WebSocket connected');
+                $('#ws-status').hide();
+                // Flush any queued guesses
+                while (guessQueue.length > 0) {
+                    const msg = guessQueue.shift();
+                    ws.send(JSON.stringify(msg));
+                    console.log('Flushed queued guess', msg);
+                }
+            };
+
+            ws.onmessage = function(event) {
+                console.log('WebSocket message received', event.data);
+                try {
+                    const data = JSON.parse(event.data);
+                    handle_state(data);
+                } catch (e) {
+                    console.error('Failed to parse WebSocket message', e);
+                }
+            };
+
+            ws.onclose = function() {
+                console.log('WebSocket disconnected, reconnecting in 2s');
+                $('#ws-status').show();
+                if (!reconnectTimer) {
+                    reconnectTimer = setTimeout(() => {
+                        reconnectTimer = null;
+                        connectWebSocket();
+                    }, 2000);
+                }
+            };
+
+            ws.onerror = function(err) {
+                console.error('WebSocket error', err);
+                ws.close();
+            };
+        }
+
+        // Initialize WebSocket on page load
+        connectWebSocket();
 
         window.onload = function () {
             for (let i = 0; i < window.state.length; ++i) {
@@ -180,5 +225,18 @@
             window.max_height = $("img.picture").map(function () { return $(this).width(); }).get().sort()[19];
             align_images();
         };
+
+        function make_guess(idx) {
+            console.log('make_guess called', idx, 'ws readyState:', ws ? ws.readyState : 'null');
+            const msg = {type: "guess", cell: idx};
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify(msg));
+                console.log('Guess sent immediately', msg);
+            } else {
+                // Queue the guess to send when connection opens
+                guessQueue.push(msg);
+                console.log('Guess queued', msg, 'queue length:', guessQueue.length);
+            }
+        }
     </script>
 </body>

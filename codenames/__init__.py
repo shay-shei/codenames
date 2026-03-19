@@ -1,6 +1,6 @@
 import random, json, hashlib
 from pathlib import Path
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -98,6 +98,29 @@ app.mount("/pictures", StaticFiles(directory=BASE_DIR / "pictures"), name="pictu
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
 all_pictures = [f"{x}" for x in range(278)]
 game = Game()
+connected_clients: set[WebSocket] = set()
+
+
+def get_state_snapshot():
+    ensure_game()
+    return {
+        "state": game.board.revealed,
+        "board_id": game.board.board_id,
+        "scores": game.scores,
+        "guesses": game.board.guesses
+    }
+
+
+async def broadcast_state():
+    global connected_clients
+    state = get_state_snapshot()
+    dead = set()
+    for ws in connected_clients:
+        try:
+            await ws.send_json(state)
+        except:
+            dead.add(ws)
+    connected_clients -= dead
 
 
 def ensure_game():
@@ -154,6 +177,7 @@ async def guess(cell: int):
     game.board.reveal(cell)
 
     if game.board.touched_black:
+        await broadcast_state()
         return "ok"
 
     guesses = game.board.guesses
@@ -162,12 +186,60 @@ async def guess(cell: int):
     elif (guesses["blue"] == 0) and (guesses["red"] > 0):
         game.mark_winner("blue")
 
+    await broadcast_state()
     return "ok"
 
 
 @app.get('/state')
 async def get_state(request: Request):
     return calc_state(request)
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    # Track player for admin UI
+    nickname = websocket.cookies.get('nickname')
+    if nickname:
+        game.add_player(nickname)
+    connected_clients.add(websocket)
+    try:
+        # Send initial state to the newly connected client
+        await websocket.send_json(get_state_snapshot())
+        # Listen for messages from this client
+        while True:
+            data = await websocket.receive_text()
+            try:
+                msg = json.loads(data)
+                if msg.get("type") == "guess":
+                    cell = msg.get("cell")
+                    print(f"[WS] Received guess: cell={cell}, type={type(cell)}")
+                    if cell is not None:
+                        # Reuse the guess logic (reveal + broadcast)
+                        ensure_game()
+                        print(f"[WS] Revealing cell {cell}, state before: {game.board.revealed}")
+                        game.board.reveal(cell)
+                        print(f"[WS] Revealed, state after: {game.board.revealed}, touched_black={game.board.touched_black}")
+
+                        if game.board.touched_black:
+                            print("[WS] Black touched, broadcasting")
+                            await broadcast_state()
+                        else:
+                            guesses = game.board.guesses
+                            print(f"[WS] Guesses: {guesses}")
+                            if (guesses["red"] == 0) and (guesses["blue"] > 0):
+                                game.mark_winner("red")
+                                print("[WS] Red won")
+                            elif (guesses["blue"] == 0) and (guesses["red"] > 0):
+                                game.mark_winner("blue")
+                                print("[WS] Blue won")
+                            await broadcast_state()
+            except Exception as e:
+                print(f"[WS] Error processing message: {e}")
+                import traceback
+                traceback.print_exc()
+    except WebSocketDisconnect:
+        connected_clients.discard(websocket)
 
 
 @app.post('/setNickname')
@@ -237,6 +309,7 @@ async def set_codemasters(request: Request):
 
         game.set_codemasters(*codemasters)
         game.start()
+        await broadcast_state()
         return RedirectResponse("/", status_code=303)
     else:
         return RedirectResponse("/admin", status_code=303)
@@ -254,6 +327,7 @@ async def new_game(request: Request, won: str = None):
     game.start()
     if won is not None:
         game.mark_winner(won)
+    await broadcast_state()
     return RedirectResponse("/", status_code=303)
 
 
@@ -265,6 +339,7 @@ async def reset_scores(request: Request):
     ensure_game()
     global game
     game.reset_scores()
+    await broadcast_state()
     return RedirectResponse("/", status_code=303)
 
 
