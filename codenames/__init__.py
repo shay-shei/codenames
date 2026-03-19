@@ -94,7 +94,13 @@ class Game(object):
 BASE_DIR = Path(__file__).resolve().parent.parent
 app = FastAPI()
 app.add_middleware(GZipMiddleware, minimum_size=500)
-app.mount("/pictures", StaticFiles(directory=BASE_DIR / "pictures"), name="pictures")
+app.mount(
+    "/pictures",
+    StaticFiles(directory=BASE_DIR / "pictures", headers={
+        "Cache-Control": "public, max-age=31536000, immutable"
+    }),
+    name="pictures"
+)
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
 all_pictures = [f"{x}" for x in range(278)]
 game = Game()
